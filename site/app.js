@@ -101,9 +101,9 @@ const C = { lake: "#1f6f8b", ctrl: "#b07d2b", s1: "#8a5cc2", nisar: "#d1495b", s
 
 // ---------- data-driven figures ----------
 (async () => {
-  const [lakes, powidz, s1, nisar, soil] = await Promise.all([
+  const [lakes, powidz, s1, nisar, soil, mt] = await Promise.all([
     getJSON("data/lake_area.json"), getJSON("data/lake_area_powidzkie.json"), getJSON("data/jozwin_s1_area.json"),
-    getJSON("data/nisar_water.json"), getJSON("data/sme2.json"),
+    getJSON("data/nisar_water.json"), getJSON("data/sme2.json"), getJSON("data/nisar_mt.json"),
   ]);
   const yearly = (d) => (d?.years || []).filter((y) => !y.outlier && y.area_ha != null).map((y) => [y.year, Math.round(y.area_ha)]);
 
@@ -122,49 +122,20 @@ const C = { lake: "#1f6f8b", ctrl: "#b07d2b", s1: "#8a5cc2", nisar: "#d1495b", s
     xType: "date", yLabel: "open water (ha)", yMin: 0,
     series: [
       { name: "Sentinel-1 (monthly max)", color: C.s1, points: (s1?.months || []).map((m) => [m.month + "-15", Math.round(m.water_ha_max)]), unit: " ha" },
-      { name: "NISAR (each pass)", color: C.nisar, line: false, r: 5, unit: " ha",
-        points: ns.filter((r) => r.good && r.pit_water_ha != null).map((r) => [r.date, Math.round(r.pit_water_ha)]) },
+      { name: "NISAR track 80 (each pass)", color: C.nisar, r: 5, unit: " ha",
+        points: (mt?.pit?.series || []).filter((r) => r.track === "080").map((r) => [r.date, Math.round(r.water_ha)]) },
     ],
   });
 
-  // Chapter 3: NISAR lake-chain open water per pass (good passes), one series per track
-  // In-lake area is stable on every pass (the lake mask excludes fields), so all calibrated passes are used here.
-  const good = ns.filter((r) => r.lakes_water_ha != null);
+  // Chapter 3: NISAR lake-chain open water per pass (multi-temporal filtered stack), one series per track
+  const ml = mt?.lakes?.series || [];
   lineChart(document.getElementById("chart-nisar-lakes"), {
-    xType: "date", yLabel: "open water (ha)", yMin: 0,
-    series: [...new Set(good.map((r) => r.track))].sort().map((tr, i) => ({
-      name: `NISAR track ${+tr} (${good.find((r) => r.track === tr).dir === "A" ? "ascending" : "descending"})`,
-      color: i ? C.soil2 : C.nisar, r: 5, unit: " ha",
-      points: good.filter((r) => r.track === tr).map((r) => [r.date, Math.round(r.lakes_water_ha)]),
+    xType: "date", yLabel: "open water (ha)", yMin: 0, yMax: 700,
+    series: [...new Set(ml.map((r) => r.track))].sort().map((tr, i) => ({
+      name: `NISAR track ${+tr} (${tr === "057" ? "ascending" : "descending"})`, color: i ? C.soil2 : C.nisar, r: 5, unit: " ha",
+      points: ml.filter((r) => r.track === tr).map((r) => [r.date, Math.round(r.water_ha)]),
     })),
   });
-
-  // NISAR 20 m: latest lakes image + region time-lapse (descending track 080)
-  const latest = ns.filter((r) => (r.views || []).includes("lakes")).slice(-1)[0];
-  const li = document.querySelector(".nisar-latest");
-  if (li && latest) {
-    li.src = `img/nisar20_lakes_${latest.date}_t${latest.track}.jpg`;
-    document.querySelector(".nisar-latest-tag").textContent = `NISAR 20 m · ${fmtDate(latest.date)}`;
-  }
-  // Polarisation slider + water map: latest good lakes pass
-  const lg = latest;
-  if (lg) {
-    const pc = document.getElementById("pol-compare");
-    pc.querySelector(".pol-hh").src = `img/nisar20_lakeshh_${lg.date}_t${lg.track}.jpg`;
-    pc.querySelector(".pol-hv").src = `img/nisar20_lakeshv_${lg.date}_t${lg.track}.jpg`;
-    document.querySelector(".pol-cap").textContent = `NISAR GCOV, frequency A, 20 m, ${fmtDate(lg.date)} (track ${+lg.track}). Same pass in both halves.`;
-    document.querySelector(".nisar-water").src = `img/nisar20_lakeswater_${lg.date}_t${lg.track}.jpg`;
-    document.querySelector(".nisar-water-tag").textContent = `NISAR water map · ${fmtDate(lg.date)}`;
-  }
-  // Pit: first vs last pass of track 080
-  const pit80 = ns.filter((r) => r.track === "080" && (r.views || []).includes("pit"));
-  if (pit80.length >= 2) {
-    const a = pit80[0], b = pit80[pit80.length - 1], pcn = document.getElementById("pit-nisar-compare");
-    pcn.querySelector(".pit-a").src = `img/nisar20_pit_${a.date}_t080.jpg`;
-    pcn.querySelector(".pit-b").src = `img/nisar20_pit_${b.date}_t080.jpg`;
-    pcn.querySelector(".pit-a-tag").textContent = "NISAR · " + fmtDate(a.date);
-    pcn.querySelector(".pit-b-tag").textContent = "NISAR · " + fmtDate(b.date);
-  }
 
   const frames = ns.filter((r) => r.track === "080" && (r.views || []).includes("region")).map((r) => r.date);
   const t = document.querySelector('.timelapse[data-source="nisar-region"]');
@@ -172,7 +143,7 @@ const C = { lake: "#1f6f8b", ctrl: "#b07d2b", s1: "#8a5cc2", nisar: "#d1495b", s
     const img = t.querySelector("img"), label = t.querySelector(".date");
     const controls = t.parentElement.querySelector(".tl-controls");
     const range = controls.querySelector("input"), btn = controls.querySelector(".play");
-    const src = (d) => `img/nisar20_region_${d}_t080.jpg`;
+    const src = (d) => `img/nisarmt_region_${d}_t080.jpg`;
     range.max = frames.length - 1;
     frames.forEach((d) => { new Image().src = src(d); }); // preload
     const show = (i) => { img.src = src(frames[i]); label.textContent = "NISAR · " + fmtDate(frames[i]); range.value = i; };
@@ -199,6 +170,11 @@ const C = { lake: "#1f6f8b", ctrl: "#b07d2b", s1: "#8a5cc2", nisar: "#d1495b", s
     sc.querySelector(".base .sm").src = "img/" + wet.file;
     sc.querySelector(".soil-l").textContent = `Driest · ${fmtDate(dry.date)}`;
     sc.querySelector(".soil-r").textContent = `Wettest · ${fmtDate(wet.date)}`;
+  }
+  const ch = soil?.change?.["057"];
+  if (ch) {
+    document.querySelector(".soil-pct").textContent = Math.round(ch.pct_drier) + "%";
+    document.querySelector(".soil-med").textContent = ch.median_change.toFixed(3);
   }
   lineChart(document.getElementById("chart-soil"), {
     xType: "date", yLabel: "soil moisture (m³/m³)", yMin: 0,

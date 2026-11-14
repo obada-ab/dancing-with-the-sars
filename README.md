@@ -33,6 +33,12 @@ uv run --with numpy python -I scripts/s1_pit_area.py site/data/jozwin_s1_area.js
 #    GCOV: read only the Konin window over HTTP (each file is ~2 GB; this pulls ~35 MB)
 uv run --with h5py --with fsspec --with aiohttp --with requests --with numpy --with pyproj python -I scripts/fetch_gcov_window.py data/nisar_gcov 17.70 52.15 18.65 52.70 <GCOV .h5 URLs from ASF search>
 uv run --with numpy --with pillow --with pyproj python -I scripts/gcov_views.py data/nisar_gcov site
+#    Multi-temporal products (speckle filter, season mean, change composite, water frequency):
+uv run --with numpy --with scipy --with pillow --with pyproj python -I scripts/gcov_mt.py data/nisar_gcov site data/nisar_gunw
+#    GUNW (80 m interferograms): coherence + chained ground-movement test
+uv run --with h5py --with fsspec --with aiohttp --with requests --with numpy --with pyproj python -I scripts/fetch_gunw_window.py data/nisar_gunw 17.70 52.15 18.65 52.70 <GUNW .h5 URLs>
+uv run --with numpy --with scipy --with pillow --with pyproj python -I scripts/gunw_views.py data/nisar_gunw site
+#    (run gunw_views.py before gcov_mt.py so the pit water mask can use coherence)
 #    SME2: download the .h5 files (~130 MB each) into data/nisar_full, then
 uv run --with h5py --with numpy --with pillow python -I scripts/sme2_maps.py data/nisar_full site/img/layers.json site/img site/data/sme2.json
 ```
